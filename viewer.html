@@ -1,100 +1,26 @@
 <!doctype html><html lang="es"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Data Viewer · Offline</title>
-<!-- CSP: permite data: en iframe/medios e inline script para esta única página -->
-<meta http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' data:; media-src 'self' data:; frame-src 'self' data:; object-src 'none'; connect-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'">
-<meta name="referrer" content="no-referrer">
-<style>
-  :root{--bg:#0b1220;--fg:#e6edf3;--muted:#9fb0c0;--brand:#22c55e}
-  html,body{margin:0;height:100%}
-  body{background:var(--bg);color:var(--fg);font:500 16px/1.5 -apple-system,BlinkMacSystemFont,system-ui,Segoe UI,Roboto}
-  header{padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-  header h1{font-size:16px;margin:0;letter-spacing:.2px;opacity:.95}
-  header .hint{color:var(--muted);font-size:13px}
-  main{display:grid;grid-template-rows:auto 1fr;min-height:calc(100% - 56px)}
-  .controls{padding:12px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
-  .btn{background:var(--brand);color:#071018;border:0;border-radius:10px;padding:10px 14px;font:600 15px inherit;cursor:pointer}
-  .btn.secondary{background:transparent;color:var(--fg);border:1px solid rgba(255,255,255,.25)}
-  #frame{width:100%;height:calc(100vh - 128px);border:0;background:#0f172a}
-  .msg{padding:12px 16px}
-  .error{color:#fca5a5;border-top:1px solid rgba(255,255,255,.08)}
-  .ok{color:var(--muted);font-size:13px}
-  code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;background:rgba(255,255,255,.06);padding:2px 6px;border-radius:6px}
-</style>
+<title>Viewer</title>
+<style>html,body{height:100%;margin:0}iframe{border:0;width:100%;height:100%}body{background:#0f172a;color:#e5e7eb;font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto}</style>
 </head><body>
-<header>
-  <h1>Data Viewer (hash → data:)</h1>
-  <span class="hint">Usa <code>#b64=</code> o <code>#t=</code> · opcional <code>?type=</code></span>
-</header>
-<main>
-  <div class="controls">
-    <button class="btn" id="embed">Ver aquí</button>
-    <button class="btn secondary" id="popup">Abrir en pestaña</button>
-    <span class="ok" id="info"></span>
-  </div>
-  <iframe id="frame" referrerpolicy="no-referrer" sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
-  <div id="msg" class="msg error" hidden>Falta <code>#b64=</code> o <code>#t=</code> en la URL.</div>
-</main>
+<iframe id="frame" referrerpolicy="no-referrer" sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
 <script>
 (function(){
-  const $ = (s)=>document.querySelector(s);
-  const info = $('#info'), msg = $('#msg'), frame = $('#frame');
-
-  function parse(){
-    const u = new URL(location.href);
-    // Permitir hash (#b64= / #t=) y también query (?b64= / ?t=) por comodidad
-    const hash = u.hash || "";
-    let isB64=false, isText=false, val=null;
-    if (hash.startsWith('#b64=')) { isB64=true; val = hash.slice(5); }
-    else if (hash.startsWith('#t=')) { isText=true; val = hash.slice(3); }
-    else if (u.searchParams.has('b64')) { isB64=true; val = u.searchParams.get('b64'); }
-    else if (u.searchParams.has('t')) { isText=true; val = u.searchParams.get('t'); }
-    const type = u.searchParams.get('type') || 'text/html;charset=utf-8';
-    const src = val ? ('data:' + type + (isB64 ? ';base64,' : ',') + val) : null;
-    return { type, isB64, isText, val, src };
+  const f = document.getElementById('frame');
+  const u = new URL(location.href);
+  const type = u.searchParams.get('type') || 'text/html;charset=utf-8';
+  const h = u.hash || '';
+  let isB64=false, isText=false, val=null;
+  if (h.startsWith('#b64=')) { isB64=true; val=h.slice(5); }
+  else if (h.startsWith('#t=')) { isText=true; val=h.slice(3); }
+  else if (u.searchParams.has('b64')) { isB64=true; val=u.searchParams.get('b64'); }
+  else if (u.searchParams.has('t')) { isText=true; val=u.searchParams.get('t'); }
+  if (!val) {
+    document.body.innerHTML = '<div style="padding:16px">Missing <code>#b64=</code> or <code>#t=</code></div>';
+    return;
   }
-
-  function humanSize(p){
-    if(!p.val) return '';
-    if(p.isB64){
-      const bytes = Math.floor((p.val.length * 3) / 4); // aproximado Base64
-      const kb = (bytes/1024).toFixed(1);
-      return kb + ' KiB';
-    } else {
-      const bytes = new TextEncoder().encode(p.val).length;
-      const kb = (bytes/1024).toFixed(1);
-      return kb + ' KiB (texto)';
-    }
-  }
-
-  function updateInfo(p){
-    if(!p.val){ info.textContent=''; return; }
-    info.textContent = (p.isB64?'Base64':'Texto') + ' · tipo=' + p.type + ' · ' + humanSize(p);
-  }
-
-  function ensureSrc(p){
-    if(!p.src){
-      msg.hidden=false; frame.removeAttribute('src'); return null;
-    }
-    msg.hidden=true; return p.src;
-  }
-
-  const p0 = parse(); updateInfo(p0);
-  // Autocargar si hay datos
-  if(p0.src) frame.src = p0.src; else msg.hidden=false;
-
-  $('#embed').addEventListener('click', ()=>{
-    const p = parse(), src = ensureSrc(p); if(!src) return;
-    frame.src = src;
-  }, {passive:true});
-
-  $('#popup').addEventListener('click', ()=>{
-    const p = parse(), src = ensureSrc(p); if(!src) return;
-    const w = window.open(src, '_blank', 'noopener,noreferrer');
-    if(!w) alert('Permite pop-ups para abrir en pestaña nueva.');
-  }, {passive:true});
+  f.src = 'data:' + type + (isB64?';base64,':',') + val;
 })();
 </script>
 </body></html>
